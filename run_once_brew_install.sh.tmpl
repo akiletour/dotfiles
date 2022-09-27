@@ -1,32 +1,30 @@
 {{- if eq .chezmoi.os "darwin" -}}
 #!/bin/bash
 
-brew bundle --no-lock --file=/dev/stdin <<EOF
-brew "cleanshot"
-brew "docker"
-brew "htop"
-brew "gettext"
-brew "curl"
-brew "deployer"
-brew "mkcert"
-brew "mas"
+brew install <<EOF
+cleanshot
+docker
+htop
+gettext
+curl
+deployer
+mkcert
+mas
 
-## Applications
-
-brew "bartender"
-brew "colorsnapper"
-brew "insomnia"
-brew "microsoft-teams"
-brew "tableplus"
-brew "google-chrome"
-brew "1password"
-brew "kitty"
-brew "jetbrains-toolbox"
-brew "numi"
-brew "sketch"
-brew "slack"
-brew "tower"
-brew "transmit"
-brew "visual-studio-code"
+bartender
+colorsnapper
+insomnia
+microsoft-teams
+tableplus
+google-chrome
+1password
+kitty
+jetbrains-toolbox
+numi"br
+sketch
+slack
+tower
+transmit
+visual-studio-code
 EOF
 {{ end -}}
