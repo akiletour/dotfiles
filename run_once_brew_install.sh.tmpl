@@ -2,17 +2,17 @@
 #!/bin/bash
 
 brew bundle --no-lock --file=/dev/stdin <<EOF
-cask "cleanshot"
-cask "docker"
-cask "htop"
-cask "gettext"
-cask "curl"
-cask "deployer"
-cask "mkcert"
-cask "mas"
+brew "docker"
+brew "htop"
+brew "gettext"
+brew "curl"
+brew "deployer"
+brew "mkcert"
+brew "mas"
 
 ## Applications
 
+cask "cleanshot"
 cask "bartender"
 cask "colorsnapper"
 cask "insomnia"
