@@ -1,0 +1,56 @@
+## Switch between all homebrew PHP versions
+phpv() {
+  brew unlink php && brew link --overwrite --force php@$1
+}
+
+sr() {
+  /opt/homebrew/opt/php@$1/bin/php /usr/local/bin/wp search-replace "$2" "$3" --all-tables --precise --skip-columns=guid
+}
+
+wps() {
+  /opt/homebrew/opt/php@$1/bin/php /usr/local/bin/wp server --host=0.0.0.0 --port=8000
+}
+
+port() {
+  lsof -i :$1
+}
+
+## Directory things
+alias l='colorls -lA --sd'
+alias w='cd ~/www'
+
+## direct access to all PHP versions
+alias php70='/opt/homebrew/opt/php@7.0/bin/php'
+alias php72='/opt/homebrew/opt/php@7.2/bin/php'
+alias php73='/opt/homebrew/opt/php@7.3/bin/php'
+alias php74='/opt/homebrew/opt/php@7.4/bin/php'
+alias php56='/opt/homebrew/opt/php@5.6/bin/php'
+alias php80='/opt/homebrew/opt/php@8.0/bin/php'
+
+## NVIM
+alias vi='nvim'
+alias vim='nvim'
+
+## Symfony
+alias sf='symfony'
+alias cons='symfony console'
+
+## Yarn
+alias ys='yarn start'
+alias yw='yarn watch'
+alias yd='yarn dev'
+alias yb='yarn build'
+
+## WordPress
+alias domain='wp option get siteurl'
+alias dev-host='php80 ~/www/Lab/dev-host/bin/console'
+
+## Symfony
+alias ss='symfony serve'
+
+## Utils
+alias k9='kill -9'
+alias config='code ~/.ssh/config'
+alias gt='gittower .'
+alias hosts='code /etc/hosts'
+alias copyssh='pbcopy < ~/.ssh/id_rsa.pub'
