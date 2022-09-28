@@ -8,7 +8,13 @@ sr() {
 }
 
 wps() {
-  /opt/homebrew/opt/php@$1/bin/php /usr/local/bin/wp server --host=0.0.0.0 --port=8000
+  if [ -n "$1" ]; then
+    phpversion=/opt/homebrew/opt/php@$1/bin/php
+  else
+    phpversion=php
+  fi
+
+  $phpversion /usr/local/bin/wp server --host=0.0.0.0 --port=8000
 }
 
 port() {
@@ -43,6 +49,7 @@ alias yb='yarn build'
 
 ## WordPress
 alias domain='wp option get siteurl'
+alias theme='cd wp-content/themes/$(wp option get template)'
 alias dev-host='php80 ~/www/Lab/dev-host/bin/console'
 
 ## Symfony
