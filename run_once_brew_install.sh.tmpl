@@ -1,7 +1,7 @@
 {{- if eq .chezmoi.os "darwin" -}}
 #!/bin/bash
 
-brew bundle --no-lock -q --file=/dev/stdin <<EOF
+brew bundle --force --no-lock -q --file=/dev/stdin <<EOF
 brew "findutils"
 brew "docker"
 brew "htop"
