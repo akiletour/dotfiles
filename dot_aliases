@@ -21,6 +21,14 @@ port() {
   lsof -i :$1
 }
 
+## Retrieve the current active WordPress theme
+## if the current theme is a sage 9 theme, remove the "resources/" part
+theme() {
+  WP_THEME=$(wp option get template)
+
+  cd "wp-content/themes/${WP_THEME/\/resources/}"
+}
+
 ## Directory things
 alias l='colorls -lA --sd'
 alias w='cd ~/www'
@@ -49,7 +57,6 @@ alias yb='yarn build'
 
 ## WordPress
 alias domain='wp option get siteurl'
-alias theme='cd wp-content/themes/$(wp option get template)'
 alias dev-host='php80 ~/www/Lab/dev-host/bin/console'
 
 ## Symfony
