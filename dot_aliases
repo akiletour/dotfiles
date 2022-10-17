@@ -7,6 +7,15 @@ sr() {
   /opt/homebrew/opt/php@$1/bin/php /usr/local/bin/wp search-replace "$2" "$3" --all-tables --precise --skip-columns=guid
 }
 
+alteo_export() {
+  if [ -n "$1" ]; then
+    ssh $2@alteo "tar -cvf - $1" | gzip > $2.tar.gz
+  else
+    echo "Usage: alteo_export <username> <folder>"
+    return
+  fi
+}
+
 wps() {
   if [ -n "$1" ]; then
     phpversion=/opt/homebrew/opt/php@$1/bin/php
