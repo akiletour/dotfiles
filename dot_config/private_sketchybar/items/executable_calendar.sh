@@ -20,3 +20,5 @@ sketchybar   --add item     mailhog right \
                             icon.font="Hack Nerd Font:Regular:16.0" \
                             icon.color=$WHITE \
                             click_script="open http://127.0.0.1:8025" \
+                            script="$PLUGIN_DIR/mailhog.sh" \
+                            update_freq=10 \
