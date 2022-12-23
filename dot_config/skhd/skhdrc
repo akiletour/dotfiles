@@ -10,7 +10,7 @@ hyper - k : yabai -m window --focus next
 hyper - r : yabai -m space --rotate 90
 
 # fast focus desktop
-hyper - x : yabai -m space --focus recent
+hyper - x : yabai -m window --focus recent
 hyper - a : yabai -m space --focus prev
 hyper - d : yabai -m space --focus next
 
