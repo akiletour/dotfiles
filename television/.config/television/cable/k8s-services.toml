@@ -1,0 +1,34 @@
+[metadata]
+name = "k8s-services"
+description = '''List and preview Services in a Kubernetes Cluster.
+
+The first source lists only from the current namespace, while the second lists from all.
+
+keybindings
+
+'''
+requirements = ["kubectl"]
+
+[source]
+output = "{1}"
+
+[[source.command]]
+name = "Current ns"
+run = '''
+kubectl get services -o go-template --template '{{range .items}}{{.metadata.namespace}} {{.metadata.name}}{{"\n"}}{{end}}'
+'''
+
+[[source.command]]
+name = "All namespaces"
+run = '''
+kubectl get services -o go-template --template '{{range .items}}{{.metadata.namespace}} {{.metadata.name}}{{"\n"}}{{end}}' --all-namespaces
+'''
+
+[preview]
+command = "kubectl describe -n {0} services/{1}"
+
+[ui]
+layout = "portrait"
+preview_panel = { size = 60 }
+
+[keybindings]

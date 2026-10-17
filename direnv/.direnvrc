@@ -1,0 +1,19 @@
+use_php() {
+  local version="$1"
+  local optdir="${HOMEBREW_PREFIX-/opt/homebrew}/opt/php${version:+"@$version"}"
+
+  if [[ -d "$optdir" ]]; then
+    PATH_add "$optdir/bin"
+    PATH_add "$optdir/sbin"
+    MANPATH_add "$optdir/share/man"
+    export PHP_ENV="$1"
+  else
+    >&2 echo "Unknown PHP version"
+    return 1
+  fi
+}
+
+use_volta() {
+    volta pin node@$1
+}
+

@@ -1,0 +1,21 @@
+[metadata]
+name = "k8s-contexts"
+description = "List and switch kubectl contexts"
+requirements = ["kubectl"]
+
+[source]
+command = "kubectl config get-contexts -o name"
+
+[preview]
+command = "kubectl config view --minify --context='{}' -o yaml"
+
+[ui]
+layout = "portrait"
+
+[keybindings]
+enter = "actions:use"
+
+[actions.use]
+description = "Switch to the selected context"
+command = "kubectl config use-context {}"
+mode = "execute"

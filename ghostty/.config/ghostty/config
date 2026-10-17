@@ -1,0 +1,10 @@
+font-size = 19
+background-blur-radius = 20
+mouse-hide-while-typing = true
+window-decoration = true
+#macos-option-as-alt = true
+theme = Catppuccin Mocha
+macos-titlebar-style = hidden
+custom-shader = ~/.config/ghostty/shaders/space.glsl
+window-padding-x = 10
+window-padding-y = 10

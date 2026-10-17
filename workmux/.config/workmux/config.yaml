@@ -1,0 +1,20 @@
+nerdfont: true
+agent: claude
+base_branch: auto
+merge_strategy: rebase
+window_prefix: "wm-"
+status_format: false
+
+panes:
+  - command: <agent>
+    focus: true
+  - split: horizontal
+    percentage: 30
+
+files:
+  copy:
+    - .env
+    - .env.local
+
+post_create:
+  - "[ -f .envrc ] && direnv allow || true"

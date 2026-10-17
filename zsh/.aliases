@@ -1,0 +1,216 @@
+## Switch between all homebrew PHP versions
+phpv() {
+  brew unlink php && brew link --overwrite --force php@$1
+}
+
+sr() {
+  /opt/homebrew/opt/php@$1/bin/php -d memory_limit=-1 /usr/local/bin/wp search-replace "$2" "$3" --all-tables --precise --skip-columns=guid
+}
+
+commit_changes() {
+  local commit_message="$1"
+
+  echo "Voulez-vous effectuer un commit avec le message suivant ? '$commit_message' (y/n)"
+  read REPLY
+
+  if [[ $REPLY =~ ^[Yy]$ ]]; then
+    echo "Effectuer le commit : $commit_message"
+    git add --all && git commit --message "$commit_message"
+  else
+    echo "Commit annulé."
+  fi
+}
+
+
+wpv() {
+    phpversion=/opt/homebrew/opt/php@$1/bin/php
+    shift
+
+  $phpversion /usr/local/bin/wp "$@"
+}
+
+wps() {
+  if [ -n "$1" ]; then
+    phpversion=/opt/homebrew/opt/php@$1/bin/php
+  else
+    phpversion=/opt/homebrew/opt/php@$PHP_ENV/bin/php
+  fi
+
+  $phpversion /usr/local/bin/wp server --host=0.0.0.0 --port=8000
+}
+
+# Fonction pour mettre à jour tous les plugins
+wpp() {
+  wpv "$1" plugin update --all
+
+  commit_changes "core(tma): update plugins before core upgrade"
+}
+
+# Fonction pour mettre à jour les langues des plugins
+wpl() {
+  wpv "$1" language plugin update --all
+  wpv "$1" language core update
+
+  commit_changes "core(tma): update translations before core upgrade"
+}
+
+# Fonction pour mettre à jour WordPress Core en français
+wpc() {
+  wpv "$1" core update --locale=fr_FR
+
+  commit_changes "core(tma): upgrade to WordPress $(wpv "$1" core version)"
+}
+
+port() {
+  lsof -i :$1
+}
+
+ml() {
+  if [[ -f Makefile ]] && grep -q '^lint:' Makefile; then
+    make lint
+  elif [[ -f composer.json ]] && grep -q '"lint"' composer.json; then
+    composer lint
+  else
+    echo "Pas de commande lint dans ce projet"
+    return 1
+  fi
+}
+
+mf() {
+  if [[ -f Makefile ]] && grep -q '^fix:' Makefile; then
+    make fix
+  elif [[ -f composer.json ]] && grep -q '"lint:fix"' composer.json; then
+    composer lint:fix
+  else
+    echo "Pas de commande fix dans ce projet"
+    return 1
+  fi
+}
+
+kubectl() {
+  local arg ctx verb skip=0 want_ctx=0
+  for arg in "$@"; do
+    if (( want_ctx )); then ctx=$arg; want_ctx=0; continue; fi
+    if (( skip )); then skip=0; continue; fi
+    case $arg in
+      --context=*) ctx=${arg#--context=} ;;
+      --context) want_ctx=1 ;;
+      -n|--namespace|-l|--selector|-o|--output|-f|--filename|-c|--container|--kubeconfig|--cluster|--user|-s|--server|--as) skip=1 ;;
+      -*) ;;
+      *) [[ -z $verb ]] && verb=$arg ;;
+    esac
+  done
+  [[ -z $ctx ]] && ctx=$(command kubectl config current-context 2>/dev/null)
+  if [[ $ctx == prod ]]; then
+    case $verb in
+      ""|get|describe|logs|top|explain|version|api-resources|api-versions|diff|events|cluster-info|config|completion|wait) ;;
+      *)
+        print -P "%F{red}%BContexte PROD%b%f : kubectl $*"
+        read -q "?Confirmer ? [y/N] " || { echo; return 1; }
+        echo
+        ;;
+    esac
+  fi
+  kubecolor "$@"
+}
+
+## Retrieve the current active WordPress theme
+## if the current theme is a sage 9 theme, remove the "resources/" part
+theme() {
+  WP_THEME=$(wp option get template)
+
+  cd "wp-content/themes/${WP_THEME/\/resources/}"
+}
+
+## Directory things
+alias w='cd ~/www'
+
+## direct access to all PHP versions
+alias php74='/opt/homebrew/opt/php@7.4/bin/php'
+alias php80='/opt/homebrew/opt/php@8.0/bin/php'
+alias php81='/opt/homebrew/opt/php@8.1/bin/php'
+alias php82='/opt/homebrew/opt/php@8.2/bin/php'
+alias php83='/opt/homebrew/opt/php@8.3/bin/php'
+alias php84='/opt/homebrew/opt/php@8.4/bin/php'
+alias php85='/opt/homebrew/opt/php@8.5/bin/php'
+
+## NVIM
+alias vi='nvim'
+alias vim='nvim'
+alias v='nvim'
+alias cl='clear'
+alias oc='opencode'
+
+## Symfony
+alias sf='symfony'
+alias cons='symfony console'
+
+## Yarn
+alias ys='yarn start'
+alias yw='yarn watch'
+alias yd='yarn dev'
+alias yb='yarn build'
+
+alias pd='pnpm dev'
+alias pb='pnpm build'
+
+## WordPress
+alias domain='wp option get siteurl'
+
+## Symfony
+alias ss='symfony serve'
+
+## Utils
+alias k9='kill -9'
+alias config='nvim ~/.ssh/config'
+alias gt='gittower .'
+alias hosts='sudo nvim /etc/hosts'
+alias copyssh='pbcopy < ~/.ssh/id_ed25519_git.pub'
+alias k='kubectl'
+alias kx='kubectx'
+alias kn='kubens'
+alias kgp='kubectl get pods'
+alias kd='kubectl describe'
+alias kl='kubectl logs -f'
+alias kex='kubectl exec -it'
+alias kpf='kubectl port-forward'
+alias kt='stern'
+alias lg='lazygit'
+alias lzd='lazydocker'
+alias gcr='gco release'
+alias ghv='gh repo view --web'
+alias ssh='TERM=xterm-256color ssh'
+
+alias l="eza --color=always --long --no-time --icons=always -a"
+alias dsa='docker stop $(docker ps -q)'
+
+## Git
+alias gc="git commit -m"
+alias gaa="git add --all"
+alias gco="git checkout"
+alias gl="git pull"
+alias gp="git push origin HEAD"
+alias ga="git add -p"
+alias gcb="git checkout -b"
+alias gcmsg="git commit -m"
+alias glog="git log --graph --topo-order --pretty='%w(100,0,6)%C(yellow)%h%C(bold)%C(black)%d %C(cyan)%ar %C(green)%an%n%C(bold)%C(white)%s %N' --abbrev-commit"
+alias gd="git diff"
+alias gst="git status"
+
+## Docker
+alias dps="docker ps"
+alias dpa="docker ps -a"
+alias de="docker exec -it"
+alias dce="docker compose exec -it"
+
+## Dirs
+alias ..="cd .."
+alias ...="cd ../.."
+alias ....="cd ../../.."
+alias .....="cd ../../../.."
+alias ......="cd ../../../../.."
+alias lt="eza --tree --level=2 --long --icons --git"
+
+## Claude Code
+alias wm='workmux'
+alias claude='claude --teammate-mode tmux'

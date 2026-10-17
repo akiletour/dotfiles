@@ -1,0 +1,34 @@
+[metadata]
+name = "k8s-deployments"
+description = '''List and preview Deployments in a Kubernetes Cluster.
+
+The first source lists only from the current namespace, while the second lists from all.
+
+Keybindings
+
+'''
+requirements = ["kubectl"]
+
+[source]
+output = "{1}"
+
+[[source.command]]
+name = "Current ns"
+run = '''
+kubectl get deployments -o go-template --template '{{range .items}}{{.metadata.namespace}} {{.metadata.name}}{{"\n"}}{{end}}'
+'''
+
+[[source.command]]
+name = "All namespaces"
+run = '''
+kubectl get deployments -o go-template --template '{{range .items}}{{.metadata.namespace}} {{.metadata.name}}{{"\n"}}{{end}}' --all-namespaces
+'''
+
+[preview]
+command = "kubectl describe -n {0} deployments/{1}"
+
+[ui]
+layout = "portrait"
+preview_panel = { size = 60 }
+
+[keybindings]
