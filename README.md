@@ -22,6 +22,7 @@ To unlink a package: `stow --delete --target="$HOME" <package>`.
 Each top-level directory is a Stow package that mirrors `$HOME`.
 
 ```
+bin/         inr-worktree, see below
 zsh/         .zshrc, .zshenv, .aliases
 tmux/        .tmux.conf, status bar and clipboard scripts
 nvim/        LazyVim
@@ -66,6 +67,18 @@ Blade formatting uses blade-formatter with Tailwind class sorting. Since none of
 `kubectl` is a shell function. It reads the effective context, `--context` included, and asks for confirmation on `prod` for anything that isn't a read (`get`, `describe`, `logs` and friends). `exec` and `port-forward` count as writes. The tmux status bar and the Starship prompt both turn red on prod, which catches me more often than the prompt does.
 
 The television channels were trimmed to the ones I use, with their delete, discard and merge actions removed. `kubectl exec` from the pod picker asks first on prod too, since it doesn't go through the shell function.
+
+### One Docker stack per worktree
+
+My local stack runs every project on `https://<project>.inr.local` through OrbStack, and the project name comes from a `.env.inr` file that git ignores. A fresh worktree has no `.env.inr`, so it can't start.
+
+`bin/inr-worktree` fills that gap from workmux hooks, and only in repos that have a `.env.inr`:
+
+- `post_create` copies `.env.inr` with a project name of `<project>-<worktree>`, drops the keys listed in `.inr/worktree.exclude`, and copies the ignored files listed in `.inr/worktree.copy` (JWT keys, `.env.local`).
+- The shell pane under the agent runs `inr-worktree up`, which restores the main checkout's latest database snapshot, then starts the stack.
+- `pre_remove` tears it down with its volumes when the worktree is merged or removed.
+
+`inr-worktree prune` lists stacks whose directory is gone and asks before deleting each one.
 
 ### tmux
 

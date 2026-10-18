@@ -3,7 +3,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-packages=(atuin direnv ghostty git k9s nvim sesh starship television tmux workmux zsh)
+packages=(atuin bin direnv ghostty git k9s nvim sesh starship television tmux workmux zsh)
 
 if [[ "${1:-}" == "--brew" ]]; then
   brew bundle --file=Brewfile
