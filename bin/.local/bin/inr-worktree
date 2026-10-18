@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+worktree=${WM_WORKTREE_PATH:-$PWD}
+root=${WM_PROJECT_ROOT:-$(git -C "$worktree" worktree list --porcelain 2>/dev/null | sed -n '1s/^worktree //p')}
+handle=${WM_HANDLE:-$(basename "$worktree")}
+
+inr() {
+  task --taskfile "${INR_DEV_DIR:-$HOME/www/Tools/inr-traefik}/Taskfile.yml" "$@"
+}
+
+slug() {
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//' | cut -c1-40 | sed -E 's/-+$//'
+}
+
+excluded() {
+  local key=$1 pattern
+  [[ -f "$root/.inr/worktree.exclude" ]] || return 1
+  while IFS= read -r pattern; do
+    [[ -n $pattern && $key == $pattern ]] && return 0
+  done < "$root/.inr/worktree.exclude"
+  return 1
+}
+
+setup() {
+  [[ -f "$root/.env.inr" && "$root" != "$worktree" ]] || return 0
+  local base name main_url line key value
+  base=$(sed -n 's/^COMPOSE_PROJECT_NAME=//p' "$root/.env.inr")
+  name="$base-$(slug "$handle")"
+  main_url="https://$base.inr.local,$base.inr.local"
+  umask 077
+  while IFS= read -r line || [[ -n $line ]]; do
+    key=${line%%=*}
+    case $key in
+      COMPOSE_PROJECT_NAME) echo "COMPOSE_PROJECT_NAME=$name" ;;
+      INR_PROD_URLS) value=${line#*=}; echo "INR_PROD_URLS=${value:+$value,}$main_url" ;;
+      *) excluded "$key" || echo "$line" ;;
+    esac
+  done < "$root/.env.inr" > "$worktree/.env.inr"
+  grep -q '^INR_PROD_URLS=' "$worktree/.env.inr" || echo "INR_PROD_URLS=$main_url" >> "$worktree/.env.inr"
+  [[ -d "$root/.git" ]] && echo "INR_GIT_COMMON_DIR=$root/.git" >> "$worktree/.env.inr"
+  for file in .envrc compose.inr.yml; do
+    if [[ -f "$root/$file" && ! -e "$worktree/$file" ]]; then
+      cp -p "$root/$file" "$worktree/$file"
+    fi
+  done
+  if [[ -f "$root/.inr/worktree.copy" ]]; then
+    local pattern path
+    while IFS= read -r pattern; do
+      [[ -n $pattern ]] || continue
+      for path in "$root"/$pattern; do
+        [[ -e $path ]] || continue
+        path=${path#"$root"/}
+        [[ -e "$worktree/$path" ]] && continue
+        mkdir -p "$worktree/$(dirname "$path")"
+        cp -Rp "$root/$path" "$worktree/$path"
+      done
+    done < "$root/.inr/worktree.copy"
+  fi
+  if [[ -f "$worktree/.envrc" ]] && ! git -C "$worktree" ls-files --error-unmatch .envrc >/dev/null 2>&1; then
+    grep -q '^export COMPOSE_PROJECT_NAME=' "$worktree/.envrc" || echo "export COMPOSE_PROJECT_NAME=$name" >> "$worktree/.envrc"
+  fi
+  echo "inr: $name -> https://$name.inr.local"
+}
+
+up() {
+  [[ -f "$worktree/.env.inr" && "$root" != "$worktree" ]] || return 0
+  cd "$worktree"
+  local snapshot
+  snapshot=$(ls -t "$root"/.inr/snapshots/*.sql 2>/dev/null | head -1 || true)
+  if [[ -n $snapshot && ! -f .inr/restored ]]; then
+    inr start -- --wait database
+    inr restore -- "$snapshot"
+    mkdir -p .inr && touch .inr/restored
+  fi
+  inr start
+}
+
+down() {
+  [[ -f "$worktree/.env.inr" && "$root" != "$worktree" ]] || return 0
+  (cd "$worktree" && inr down -- -v) || echo "inr: arrêt impossible, lance 'inr-worktree prune' plus tard" >&2
+}
+
+prune() {
+  local name dir answer
+  docker ps -a --filter label=com.docker.compose.project \
+    --format '{{.Label "com.docker.compose.project"}}	{{.Label "com.docker.compose.project.working_dir"}}' |
+    sort -u |
+    while IFS=$'\t' read -r name dir; do
+      [[ -n $dir && ! -d $dir ]] || continue
+      read -r -p "inr: $name pointe vers $dir qui n'existe plus. Supprimer conteneurs et volumes ? [y/N] " answer < /dev/tty
+      if [[ $answer == y ]]; then
+        docker compose -p "$name" down -v --remove-orphans
+      fi
+    done
+}
+
+case ${1:-} in
+  setup) setup ;;
+  up) up ;;
+  down) down ;;
+  prune) prune ;;
+  *) echo "usage: inr-worktree setup|up|down|prune" >&2; exit 2 ;;
+esac

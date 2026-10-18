@@ -34,3 +34,4 @@ auth.json
 .ssh/
 *_history
 id_ecdsa*
+!.local/
