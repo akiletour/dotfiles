@@ -42,6 +42,7 @@ brew "kubectx"
 brew "kubernetes-cli"
 brew "kubeseal"
 brew "lazydocker"
+brew "dry"
 brew "lazygit"
 brew "libffi"
 brew "mailhog", restart_service: :changed

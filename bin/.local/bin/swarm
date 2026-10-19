@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+hosts() {
+  docker context ls --format '{{.Name}}	{{.Description}}' | awk -F'\t' '$2 == "swarm" { print $1 }'
+}
+
+case ${1:-} in
+  add)
+    shift
+    for host in "$@"; do
+      docker context inspect "$host" >/dev/null 2>&1 || docker context create "$host" --description swarm --docker "host=ssh://$host" >/dev/null
+      echo "$host"
+    done
+    exit
+    ;;
+  ls)
+    hosts
+    exit
+    ;;
+  -h|--help)
+    echo "usage: swarm [host] | swarm add <host>... | swarm ls"
+    exit
+    ;;
+esac
+
+host=${1:-$(hosts | fzf --border-label " swarm " --prompt "> " || true)}
+[[ -n $host ]] || exit 1
+hosts | grep -qxF "$host" || { echo "swarm: unknown host $host, run: swarm add $host" >&2; exit 1; }
+
+dir=$(mktemp -d "${TMPDIR:-/tmp}/swarm.XXXXXX")
+sock=$dir/docker.sock
+ctl=$dir/ctl
+trap 'ssh -S "$ctl" -O exit "$host" >/dev/null 2>&1 || true; rm -rf "$dir"' EXIT
+
+ssh -fNT -M -S "$ctl" -o ExitOnForwardFailure=yes -o ControlPersist=no -L "$sock:/var/run/docker.sock" "$host"
+dry -H "unix://$sock"

@@ -114,6 +114,58 @@ kubectl() {
   kubecolor "$@"
 }
 
+docker() {
+  local arg ctx verb sub want_ctx=0 skip=0
+  for arg in "$@"; do
+    if (( want_ctx )); then ctx=$arg; want_ctx=0; continue; fi
+    if (( skip )); then skip=0; continue; fi
+    if [[ -z $verb ]]; then
+      case $arg in
+        --context=*|-c=*) ctx=${arg#*=} ;;
+        --context|-c) want_ctx=1 ;;
+        -H|--host|--config|-l|--log-level) skip=1 ;;
+        -*) ;;
+        *) verb=$arg ;;
+      esac
+    elif [[ -z $sub && $arg != -* ]]; then
+      sub=$arg
+    fi
+  done
+  case $verb in
+    ""|ps|logs|inspect|images|info|version|stats|top|events|port|diff|history|help) ;;
+    context)
+      if [[ $sub == use ]] && _docker_is_swarm "${@[-1]}"; then
+        print -P "%F{red}%Bdocker context use ${@[-1]}%b%f refusé : utilise --context ${@[-1]} ou swarm"
+        return 1
+      fi
+      ;;
+    service|stack|node|network|volume|config|secret|container|image|system)
+      case $sub in
+        ""|ls|ps|logs|inspect|services|df|info|events|top|stats|port|diff|history) ;;
+        *) _docker_swarm_confirm "$ctx" "$@" || return 1 ;;
+      esac
+      ;;
+    *) _docker_swarm_confirm "$ctx" "$@" || return 1 ;;
+  esac
+  command docker "$@"
+}
+
+_docker_is_swarm() {
+  command docker context ls --format '{{.Name}}|{{.Description}}' 2>/dev/null | grep -qxF "$1|swarm"
+}
+
+_docker_swarm_confirm() {
+  local ctx=$1; shift
+  if [[ -z $ctx ]]; then
+    [[ -n $DOCKER_HOST ]] && return 0
+    ctx=${DOCKER_CONTEXT:-$(command docker context show 2>/dev/null)}
+  fi
+  _docker_is_swarm "$ctx" || return 0
+  print -P "%F{red}%BSwarm $ctx%b%f : docker $*"
+  read -q "?Confirmer ? [y/N] " || { echo; return 1; }
+  echo
+}
+
 ## Retrieve the current active WordPress theme
 ## if the current theme is a sage 9 theme, remove the "resources/" part
 theme() {

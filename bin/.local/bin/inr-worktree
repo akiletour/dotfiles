@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+export DOCKER_CONTEXT=orbstack
+
 worktree=${WM_WORKTREE_PATH:-$PWD}
 root=${WM_PROJECT_ROOT:-$(git -C "$worktree" worktree list --porcelain 2>/dev/null | sed -n '1s/^worktree //p')}
 handle=${WM_HANDLE:-$(basename "$worktree")}

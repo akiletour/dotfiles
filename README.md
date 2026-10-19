@@ -22,7 +22,7 @@ To unlink a package: `stow --delete --target="$HOME" <package>`.
 Each top-level directory is a Stow package that mirrors `$HOME`.
 
 ```
-bin/         inr-worktree, see below
+bin/         inr-worktree and swarm, see below
 zsh/         .zshrc, .zshenv, .aliases
 tmux/        .tmux.conf, status bar and clipboard scripts
 nvim/        LazyVim
@@ -66,6 +66,10 @@ Blade formatting uses blade-formatter with Tailwind class sorting. Since none of
 
 `kubectl` is a shell function. It reads the effective context, `--context` included, and asks for confirmation on `prod` for anything that isn't a read (`get`, `describe`, `logs` and friends). `exec` and `port-forward` count as writes. The tmux status bar and the Starship prompt both turn red on prod, which catches me more often than the prompt does.
 
+Docker gets the same treatment for Swarm servers. `swarm add <host>` creates a Docker context over SSH and tags it `swarm`, and from then on `docker --context <host>` asks before anything that isn't a read. The host list lives in those contexts, so no server name ends up in this repo.
+
+`swarm` opens [dry](https://github.com/moncho/dry) on one of them, the closest thing to k9s for Swarm: nodes, stacks, services, tasks and logs. It goes through a throwaway SSH tunnel to the remote socket, closed when dry exits. dry itself has no read-only mode, so a delete from its UI doesn't go through the prompt.
+
 The television channels were trimmed to the ones I use, with their delete, discard and merge actions removed. `kubectl exec` from the pod picker asks first on prod too, since it doesn't go through the shell function.
 
 ### One Docker stack per worktree
@@ -89,6 +93,7 @@ Prefix is `C-a`. Most bindings open a popup and close it when you quit:
 | `C-a g` | lazygit in the current directory |
 | `C-a K` | k9s, all namespaces |
 | `C-a D` | lazydocker |
+| `C-a S` | dry on a Swarm server, picked with fzf |
 | `C-a t` | television |
 | `C-a T` | sesh session picker |
 | `C-a W` | workmux dashboard |
