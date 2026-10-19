@@ -1,0 +1,8 @@
+d4s:
+  readOnly: true
+  defaultView: services
+  skipLatestRevCheck: true
+  ui:
+    skin: tokyonight
+  logger:
+    tail: 200

@@ -28,10 +28,4 @@ host=${1:-$(hosts | fzf --border-label " swarm " --prompt "> " || true)}
 [[ -n $host ]] || exit 1
 hosts | grep -qxF "$host" || { echo "swarm: unknown host $host, run: swarm add $host" >&2; exit 1; }
 
-dir=$(mktemp -d "${TMPDIR:-/tmp}/swarm.XXXXXX")
-sock=$dir/docker.sock
-ctl=$dir/ctl
-trap 'ssh -S "$ctl" -O exit "$host" >/dev/null 2>&1 || true; rm -rf "$dir"' EXIT
-
-ssh -fNT -M -S "$ctl" -o ExitOnForwardFailure=yes -o ControlPersist=no -L "$sock:/var/run/docker.sock" "$host"
-dry -H "unix://$sock"
+exec d4s --context "$host"

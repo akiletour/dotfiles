@@ -33,6 +33,7 @@ sesh/        tmux session picker
 workmux/     one tmux window per git worktree, Claude Code on top
 television/  fuzzy pickers for git, docker and k8s
 k9s/         aliases
+d4s/         read-only config for d4s
 atuin/       shell history
 direnv/      use_php helper for per-project PHP versions
 Brewfile
@@ -68,7 +69,7 @@ Blade formatting uses blade-formatter with Tailwind class sorting. Since none of
 
 Docker gets the same treatment for Swarm servers. `swarm add <host>` creates a Docker context over SSH and tags it `swarm`, and from then on `docker --context <host>` asks before anything that isn't a read. The host list lives in those contexts, so no server name ends up in this repo.
 
-`swarm` opens [dry](https://github.com/moncho/dry) on one of them, the closest thing to k9s for Swarm: nodes, stacks, services, tasks and logs. It goes through a throwaway SSH tunnel to the remote socket, closed when dry exits. dry itself has no read-only mode, so a delete from its UI doesn't go through the prompt.
+`swarm` opens [d4s](https://github.com/jr-k/d4s) on one of them. It's k9s for Docker: same layout, `:services`, `:stacks`, `:nodes`, `:tasks`, live logs. Its config sets `readOnly`, which in v0.49 only blocks delete, restart and scale to zero. Stop, prune, scale, edit and shell still go through, behind d4s's own confirmation, and none of it goes through the shell prompt.
 
 The television channels were trimmed to the ones I use, with their delete, discard and merge actions removed. `kubectl exec` from the pod picker asks first on prod too, since it doesn't go through the shell function.
 
@@ -93,7 +94,7 @@ Prefix is `C-a`. Most bindings open a popup and close it when you quit:
 | `C-a g` | lazygit in the current directory |
 | `C-a K` | k9s, all namespaces |
 | `C-a D` | lazydocker |
-| `C-a S` | dry on a Swarm server, picked with fzf |
+| `C-a S` | d4s on a Swarm server, picked with fzf |
 | `C-a t` | television |
 | `C-a T` | sesh session picker |
 | `C-a W` | workmux dashboard |
