@@ -21,11 +21,6 @@ stow --restow --target="$HOME" "${packages[@]}"
 
 git config core.hooksPath .githooks
 
-python=$(brew --prefix 2>/dev/null)/bin/python3.12
-if [[ -x "$python" && ! -e "$HOME/.local/bin/python3" ]]; then
-  ln -s "$python" "$HOME/.local/bin/python3"
-fi
-
 if command -v volta >/dev/null && ! command -v devsense-php-ls >/dev/null; then
   volta install devsense-php-ls
 fi
