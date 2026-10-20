@@ -19,6 +19,15 @@ done
 
 stow --restow --target="$HOME" "${packages[@]}"
 
+mkdir -p "$HOME/.atuin"
+for name in config.toml themes; do
+  target="$HOME/.atuin/$name"
+  if [[ -e "$target" && ! -L "$target" ]]; then
+    mv "$target" "$target.bak-$(date +%Y%m%d%H%M%S)"
+  fi
+  ln -sfn "$PWD/atuin/.config/atuin/$name" "$target"
+done
+
 git config core.hooksPath .githooks
 
 if command -v volta >/dev/null && ! command -v devsense-php-ls >/dev/null; then
