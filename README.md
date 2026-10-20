@@ -22,7 +22,7 @@ To unlink a package: `stow --delete --target="$HOME" <package>`.
 Each top-level directory is a Stow package that mirrors `$HOME`.
 
 ```
-bin/         inr-worktree and swarm, see below
+bin/         inr-worktree, tab-wt and swarm, see below
 zsh/         .zshrc, .zshenv, .aliases
 tmux/        .tmux.conf, status bar and clipboard scripts
 nvim/        LazyVim
@@ -36,6 +36,7 @@ k9s/         aliases
 d4s/         read-only config for d4s
 atuin/       shell history
 direnv/      use_php helper for per-project PHP versions
+raycast/     Script Commands, not stowed
 Brewfile
 ```
 
@@ -88,6 +89,41 @@ My local stack runs every project on `https://<project>.inr.local` through OrbSt
 Some client projects run on a shared Makefile stack instead, where every container, domain and database name comes from `PROJECT_NAME` in `docker/.env`. Set `WORKTREE_MAKE_STACK_VAR` in `~/.zshrc.local` to the variable their Makefile includes, and the same hooks write a `docker/.env.local` with a per-worktree name, copy the ignored `.env*.local` files and JWT keys, clone the main checkout's Postgres database, and tear it all down on remove. Nothing is added to the client's repo: every file it writes is already in their `.gitignore`, and its state lives in `.git/worktrees/`.
 
 When an OAuth provider only accepts the main domain as a callback, `inr-worktree focus` stops the main checkout's app and web containers and serves the worktree on that domain, still with its own database. `inr-worktree unfocus` gives the domain back, and removing the worktree does it too.
+
+### A worktree from the Chrome tab
+
+`bin/tab-wt` opens a workmux worktree for whatever is in the active Chrome tab: a Jira ticket, a GitHub PR or a Bitbucket PR. `raycast/tab-wt.sh` puts it on a Raycast hotkey, and it also takes a URL or a bare ticket key (`PROJ-123`) as argument.
+
+- A Jira ticket picks its repo in this order: a repo named in the ticket title (that's how a shared bundle is found, whatever the project key), then the project key in `~/.config/tab-wt/projects`, then the repo with the most branches for that key. With several candidates a dialog asks, with an "Autre dépôt…" entry listing every repo of the organisation. An existing branch for the ticket is reused, and one that already has a worktree opens straight away.
+- A new branch is `<prefix>/<KEY>-<english-slug>`: the feature prefix configured for the Jira instance, or `fix/` for a Bug or an Anomalie. Claude translates the title into the slug, and the plain slug of the original title is the fallback when it can't. It always starts from the remote default branch, never `develop` or `release`.
+- A PR checks out its source branch: `workmux add --pr` on GitHub, the branch name from the Bitbucket API otherwise.
+- The worktree is named after the ticket key, so it lands in `<repo>__worktrees/proj-123` and the `wm-proj-123` window.
+
+`--dry-run` prints the repo, branch, base and target without creating anything. `--prompt` hands the ticket to the agent pane.
+
+Both config files live in `~/.config/tab-wt/` and stay out of the repo, since they name client instances and repos. `instances` has one line per Jira site: host, Composio account, organisation directory under `~/www`, feature prefix.
+
+```
+acme.atlassian.net  acme  Acme  feature
+```
+
+Jira and Bitbucket go through the Composio REST API, with each account's key in the macOS Keychain:
+
+```sh
+security add-generic-password -U -s tab-wt-composio-acme -a api_key -w '<ak_...>'
+security add-generic-password -U -s tab-wt-composio-acme -a user_id -w '<user id>'
+```
+
+In Raycast, add `~/dotfiles/raycast` under Extensions → Script Commands → Add Directories.
+
+`projects` has one line per Jira project key, followed by its repos relative to `~/www`:
+
+```
+PROJ   Acme/api Acme/front
+SITE   Clients/acme-site
+```
+
+A key with a single repo never asks. Leave shared bundles out, the title rule already finds them.
 
 ### tmux
 

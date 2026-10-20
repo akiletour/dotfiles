@@ -1,0 +1,351 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export PATH="/opt/homebrew/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+export LANG=${LANG:-en_US.UTF-8} LC_CTYPE=${LC_CTYPE:-en_US.UTF-8}
+unset TMUX TMUX_PANE
+
+repos_root=${TAB_WT_ROOT:-$HOME/www}
+config_dir=${XDG_CONFIG_HOME:-$HOME/.config}/tab-wt
+projects_file=${TAB_WT_PROJECTS:-$config_dir/projects}
+instances_file=${TAB_WT_INSTANCES:-$config_dir/instances}
+dry_run=0
+with_prompt=0
+input=
+
+usage() {
+  echo "usage: tab-wt [--dry-run] [--prompt] [url|JIRA-KEY]" >&2
+  exit 2
+}
+
+while (($#)); do
+  case $1 in
+    --dry-run) dry_run=1 ;;
+    --prompt) with_prompt=1 ;;
+    -h | --help) usage ;;
+    *) input=$1 ;;
+  esac
+  shift
+done
+
+die() {
+  echo "$*" >&2
+  exit 1
+}
+
+composio() {
+  local acct=$1 tool=$2 args=$3 key uid
+  key=$(security find-generic-password -s "tab-wt-composio-$acct" -a api_key -w 2>/dev/null) || die "Clé Composio $acct absente du trousseau"
+  uid=$(security find-generic-password -s "tab-wt-composio-$acct" -a user_id -w)
+  curl -fsS --max-time 20 -X POST "https://backend.composio.dev/api/v3/tools/execute/$tool" \
+    -H "x-api-key: $key" -H 'Content-Type: application/json' \
+    -d "$(jq -n --arg u "$uid" --argjson a "$args" '{user_id: $u, arguments: $a}')"
+}
+
+chrome_url() {
+  osascript -e 'tell application "Google Chrome" to get URL of active tab of front window' 2>/dev/null
+}
+
+slug() {
+  printf '%s' "$1" | perl -CSD -MUnicode::Normalize -ne '
+    $_ = NFD($_); s/\p{Mn}//g; s/\[[^]]*\]|\([^)]*\)//g; $_ = lc;
+    s/[^a-z0-9]+/-/g; s/^-+|-+$//g;
+    if (length > 50) { $_ = substr($_, 0, 51); s/-[^-]*$//; }
+    print'
+}
+
+english_slug() {
+  local out
+  out=$({
+    printf '%s\n' \
+      'You name git branches. Translate the Jira ticket title below into English, then reply with a branch slug of 2 to 6 English words, lowercase, hyphen-separated.' \
+      'Never keep French words. Drop ticket keys, tags in brackets or parentheses like [BACK] or (FRONT), and prefixes like feat or fix.' \
+      'Examples:' \
+      'Montée de version du mail-bundle -> upgrade-mail-bundle' \
+      'Corriger les erreurs sur la création de PartExchange -> fix-part-exchange-creation-errors' \
+      'Reply with the slug only, nothing else.' '' 'Title:' "$1"
+  } | timeout 20 claude -p --model sonnet --strict-mcp-config --setting-sources "" --no-session-persistence 2>/dev/null | tail -1) || out=
+  out=$(slug "$out" | sed -E 's/^(feat|feature|fix|bugfix|hotfix)-//')
+  if [[ -n $out ]]; then printf '%s\n' "$out"; else slug "$1"; fi
+}
+
+ticket_key() {
+  [[ $1 =~ ([A-Za-z][A-Za-z0-9]+-[0-9]+) ]] && tr '[:lower:]' '[:upper:]' <<<"${BASH_REMATCH[1]}"
+  return 0
+}
+
+branch_worktree() {
+  git -C "$1" worktree list --porcelain | awk -v b="branch refs/heads/${2#origin/}" '/^worktree /{p = substr($0, 10)} $0 == b {print p; exit}'
+}
+
+worktree_name() {
+  local repo=$1 branch=$2 fallback=$3 path
+  path=$(branch_worktree "$repo" "$branch")
+  [[ -n $path && $path == "$repo" ]] && die "${branch#origin/} est déjà sortie dans $repo"
+  if [[ -n $path ]]; then basename "$path"; else printf '%s\n' "$fallback"; fi
+}
+
+choose() {
+  local prompt=$1
+  shift
+  ((dry_run && $# > 1)) && printf 'Choix %s %s\n' "$prompt" "$*" >&2
+  (($# == 1 || dry_run)) && { printf '%s\n' "$1"; return; }
+  local items
+  items=$(printf '"%s",' "$@")
+  osascript -e "set r to choose from list {${items%,}} with prompt \"$prompt\" default items {\"$1\"}" -e 'if r is false then return ""' -e 'return item 1 of r'
+}
+
+all_repos() {
+  local dir
+  for dir in "$repos_root"/*/*/; do
+    dir=${dir%/}
+    [[ $dir == *__worktrees || ! -d $dir/.git ]] && continue
+    printf '%s\n' "$dir"
+  done
+}
+
+remote_id() {
+  git -C "$1" remote get-url origin 2>/dev/null | sed -E 's#^(git@|ssh://git@|https://)([^/:]+)[:/]##; s#\.git$##' | tr '[:upper:]' '[:lower:]'
+}
+
+repo_for_remote() {
+  local want repo
+  want=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
+  while read -r repo; do
+    [[ $(remote_id "$repo") == "$want" ]] && { printf '%s\n' "$repo"; return; }
+  done < <(all_repos)
+  die "Aucun clone local de $1 dans $repos_root"
+}
+
+mapped_repos() {
+  [[ -f $projects_file ]] || return 0
+  awk -v k="$1" '/^[[:space:]]*#/ {next} $1 == k {for (i = 2; i <= NF; i++) print $i; exit}' "$projects_file"
+}
+
+repo_in_title() {
+  local lower_summary repo name
+  lower_summary=$(tr '[:upper:]' '[:lower:]' <<<"$1")
+  shift
+  for repo in "$@"; do
+    name=$(basename "$repo" | tr '[:upper:]' '[:lower:]')
+    if ((${#name} >= 5)) && [[ $lower_summary == *"$name"* ]]; then
+      printf '%s\n' "$repo"
+      return
+    fi
+  done
+}
+
+choose_repo() {
+  local project=$1 org_dir=$2 repo
+  shift 2
+  local -a labels=()
+  for repo in "$@"; do labels+=("${repo#"$repos_root"/}"); done
+  (($# > 1)) && labels+=("Autre dépôt…")
+  repo=$(choose "Dépôt pour $project ?" "${labels[@]}")
+  [[ -n $repo ]] || die "Annulé"
+  if [[ $repo == "Autre dépôt…" ]]; then
+    labels=()
+    for repo in "$org_dir"/*/; do
+      repo=${repo%/}
+      [[ $repo == *__worktrees || ! -d $repo/.git ]] || labels+=("${repo#"$repos_root"/}")
+    done
+    repo=$(choose "Dépôt pour $project ?" "${labels[@]}")
+    [[ -n $repo ]] || die "Annulé"
+  fi
+  printf '%s\n' "$repos_root/$repo"
+}
+
+repo_for_project() {
+  local project=$1 org_dir=$2 summary=$3 repo count top=0
+  local -a mapped=() org=() ranked=()
+  while read -r repo; do
+    [[ -d $repos_root/$repo/.git ]] || die "$projects_file : $repo n'est pas un dépôt sous $repos_root"
+    mapped+=("$repos_root/$repo")
+  done < <(mapped_repos "$project")
+  for repo in "$org_dir"/*/; do
+    repo=${repo%/}
+    [[ $repo == *__worktrees || ! -d $repo/.git ]] || org+=("$repo")
+  done
+
+  repo=$(repo_in_title "$summary" "${mapped[@]+"${mapped[@]}"}" "${org[@]+"${org[@]}"}")
+  [[ -n $repo ]] && { printf '%s\n' "$repo"; return; }
+
+  if ((${#mapped[@]} > 0)); then
+    choose_repo "$project" "$org_dir" "${mapped[@]}"
+    return
+  fi
+
+  while read -r count repo; do
+    ((top == 0)) && top=$count
+    ((count * 10 >= top)) && ranked+=("$repo")
+  done < <(
+    while read -r repo; do
+      count=$(git -C "$repo" for-each-ref --format='%(refname:lstrip=2)' refs/heads refs/remotes/origin | grep -ciE "(^|/)$project-[0-9]+" || true)
+      ((count > 0)) && printf '%s %s\n' "$count" "$repo"
+    done < <(all_repos) | sort -rn
+  )
+  if ((${#ranked[@]} > 0)); then
+    choose_repo "$project" "$org_dir" "${ranked[@]}"
+  else
+    choose_repo "$project" "$org_dir" "${org[@]}"
+  fi
+}
+
+existing_branches() {
+  local repo=$1 key=$2
+  {
+    git -C "$repo" for-each-ref --sort=-committerdate --format='%(refname:lstrip=2)' refs/heads
+    git -C "$repo" for-each-ref --sort=-committerdate --format='%(refname:lstrip=2)' refs/remotes/origin
+  } | grep -iE "^(origin/)?((feature|feat|fix|bugfix|hotfix)/)?$key(-|$)" | awk '{ name = $0; sub(/^origin\//, "", name); if (!(name in seen)) { seen[name] = 1; print } }' || true
+}
+
+session_for() {
+  local repo=$1 name
+  name=$(tmux list-sessions -F '#{session_path}|#{session_name}' 2>/dev/null | awk -F'|' -v p="$repo" '$1 == p {print $2; exit}')
+  if [[ -z $name ]]; then
+    name=$(basename "$repo" | tr '.:' '__')
+    if ((!dry_run)) && ! tmux has-session -t "=$name" 2>/dev/null; then
+      tmux new-session -d -s "$name" -c "$repo" || die "Impossible de démarrer la session tmux $name"
+    fi
+  fi
+  printf '%s\n' "$name"
+}
+
+open_worktree() {
+  local repo=$1 session plan target
+  shift
+  session=$(session_for "$repo")
+  plan=$(cd "$repo" && workmux add --dry-run -b -o --parent-session "$session" "$@" 2>&1) || die "workmux : $(tail -1 <<<"$plan")"
+  target=$(sed -n 's/^Target: *\([^ ]*\).*/\1/p' <<<"$plan")
+  if ((dry_run)); then
+    printf 'Dépôt:    %s\nSession:  %s\n%s\n' "$repo" "$session" "$plan"
+    return
+  fi
+  local out
+  out=$(cd "$repo" && workmux add -b -o --parent-session "$session" "$@" 2>&1) || die "workmux : $(grep -v '^\s*$' <<<"$out" | tail -1)"
+  local client
+  client=$(tmux list-clients -F '#{client_activity} #{client_name}' 2>/dev/null | sort -rn | awk 'NR == 1 {print $2}')
+  if [[ -n $client ]]; then
+    tmux switch-client -c "$client" -t "$session:$target" 2>/dev/null || tmux switch-client -c "$client" -t "$session"
+  fi
+  open -a Ghostty
+  echo "$target ouvert dans $session"
+}
+
+require_instances() {
+  [[ -f $instances_file ]] || die "Aucune instance Jira configurée dans $instances_file"
+}
+
+instances() {
+  awk '/^[[:space:]]*#/ || NF < 4 {next} {print $1, $2, $3, $4}' "$instances_file"
+}
+
+open_jira() {
+  local key=$1 host=${2:-} issue= acct= dir= prefix= h a d p
+  require_instances
+  while read -r h a d p; do
+    [[ -n $host && $h != "$host" ]] && continue
+    issue=$(composio "$a" JIRA_GET_ISSUE "$(jq -n --arg k "$key" '{issue_id_or_key: $k}')") || continue
+    if [[ $(jq -r '.successful' <<<"$issue") == true ]]; then
+      acct=$a dir=$d prefix=$p
+      break
+    fi
+  done < <(instances)
+  [[ -n $acct ]] || die "Ticket $key introuvable"
+
+  local summary type project org_dir=$repos_root/$dir repo branch
+  summary=$(jq -r '.data.summary // ""' <<<"$issue")
+  type=$(jq -r '.data.issue_type.name // ""' <<<"$issue")
+  project=${key%-*}
+
+  shopt -s nocasematch
+  [[ $type =~ ^(bug|anomalie)$ ]] && prefix=fix
+  shopt -u nocasematch
+
+  repo=$(repo_for_project "$project" "$org_dir" "$summary")
+  git -C "$repo" fetch -q --prune origin 2>/dev/null || true
+  local -a found=()
+  while read -r branch; do
+    [[ -n $branch ]] && found+=("$branch")
+  done < <(existing_branches "$repo" "$key")
+  branch=
+  local candidate path
+  for candidate in "${found[@]+"${found[@]}"}"; do
+    path=$(branch_worktree "$repo" "$candidate")
+    if [[ -n $path && $path != "$repo" ]]; then
+      branch=${candidate#origin/}
+      break
+    fi
+  done
+  if [[ -z $branch ]] && ((${#found[@]} > 0)); then
+    branch=$(choose "Branche pour $key ?" "${found[@]}" "Nouvelle branche")
+    [[ -n $branch ]] || die "Annulé"
+    [[ $branch == "Nouvelle branche" ]] && branch=
+  fi
+  if [[ -z $branch ]]; then
+    local s
+    s=$(english_slug "$summary")
+    branch="$prefix/$key"
+    [[ -n $s ]] && branch+="-$s"
+  fi
+
+  local -a args=(--name "$(worktree_name "$repo" "$branch" "$key")")
+  if [[ $branch != origin/* ]] && ! git -C "$repo" show-ref -q --verify "refs/heads/$branch"; then
+    local base
+    base=$(git -C "$repo" symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null || true)
+    [[ -n $base ]] && args+=(--base "$base")
+  fi
+  if ((with_prompt)); then
+    args+=(--prompt "$(jq -r --arg k "$key" '"\($k) : \(.data.summary)\n\n\(.data.description // "" | if type == "string" then . else tostring end)"' <<<"$issue")")
+  fi
+  open_worktree "$repo" "${args[@]}" "$branch"
+}
+
+open_bitbucket_pr() {
+  local workspace=$1 slug=$2 id=$3 repo pr branch
+  require_instances
+  repo=$(repo_for_remote "$workspace/$slug")
+  local acct
+  branch=
+  while read -r acct; do
+    pr=$(composio "$acct" BITBUCKET_GET_PULL_REQUEST "$(jq -n --arg w "$workspace" --arg r "$slug" --argjson i "$id" '{workspace: $w, repo_slug: $r, pull_request_id: $i}')") || continue
+    branch=$(jq -r '.data.pull_request.source.branch.name // empty' <<<"$pr")
+    [[ -n $branch ]] && break
+  done < <(instances | awk '!seen[$2]++ {print $2}')
+  [[ -n $branch ]] || die "PR #$id introuvable sur $workspace/$slug"
+  git -C "$repo" fetch -q origin "$branch" 2>/dev/null || true
+  local key name
+  key=$(ticket_key "$branch")
+  name=$(worktree_name "$repo" "$branch" "${key:-pr-$id}")
+  if git -C "$repo" show-ref -q --verify "refs/heads/$branch"; then
+    open_worktree "$repo" --name "$name" "$branch"
+  else
+    open_worktree "$repo" --name "$name" "origin/$branch"
+  fi
+}
+
+[[ -n $input ]] || input=$(chrome_url) || true
+[[ -n $input ]] || die "Aucun onglet Chrome ni argument"
+
+if [[ $input =~ ^([A-Za-z][A-Za-z0-9]+-[0-9]+)$ ]]; then
+  open_jira "$(tr '[:lower:]' '[:upper:]' <<<"$input")"
+elif [[ $input =~ ^https?://([^/]+\.atlassian\.net)/ ]]; then
+  host=${BASH_REMATCH[1]}
+  require_instances
+  instances | awk -v h="$host" '$1 == h {found = 1} END {exit !found}' || die "Instance Jira inconnue : $host"
+  if [[ $input =~ [?\&]selectedIssue=([A-Z][A-Z0-9]+-[0-9]+) || $input =~ /browse/([A-Z][A-Z0-9]+-[0-9]+) || $input =~ /issues/([A-Z][A-Z0-9]+-[0-9]+) ]]; then
+    open_jira "${BASH_REMATCH[1]}" "$host"
+  else
+    die "Pas de ticket dans cette page Jira"
+  fi
+elif [[ $input =~ ^https?://github\.com/([^/]+)/([^/]+)/pull/([0-9]+) ]]; then
+  owner_repo="${BASH_REMATCH[1]}/${BASH_REMATCH[2]}" pr_id=${BASH_REMATCH[3]}
+  repo=$(repo_for_remote "$owner_repo")
+  head=$(gh pr view "$pr_id" -R "$owner_repo" --json headRefName --jq .headRefName 2>/dev/null) || die "PR #$pr_id introuvable sur $owner_repo"
+  key=$(ticket_key "$head")
+  open_worktree "$repo" --name "$(worktree_name "$repo" "$head" "${key:-pr-$pr_id}")" --pr "$input"
+elif [[ $input =~ ^https?://bitbucket\.org/([^/]+)/([^/]+)/pull-requests/([0-9]+) ]]; then
+  open_bitbucket_pr "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}"
+else
+  die "Onglet non reconnu : ${input:0:80}"
+fi
