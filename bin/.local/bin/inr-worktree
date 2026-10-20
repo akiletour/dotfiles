@@ -36,24 +36,66 @@ mk_value() {
   sed -n "s/^$1=//p" "$2" | tail -1 | tr -d "\"'"
 }
 
-mk_setup() {
-  local base name line key path domain
-  base=$(mk_value PROJECT_NAME "$root/docker/.env")
-  name="$base-$(slug "$handle")"
+mk_env() {
+  local name=$1 sub=$2 line key
   umask 077
   {
     [[ -f "$root/docker/.env.local" ]] && grep -vE '^(PROJECT_NAME|SUB_DOMAIN_NAME)=' "$root/docker/.env.local"
     echo "PROJECT_NAME=$name"
-    echo "SUB_DOMAIN_NAME=$name"
+    echo "SUB_DOMAIN_NAME=$sub"
     while IFS= read -r line || [[ -n $line ]]; do
       key=${line%%=*}
       [[ $key == PROJECT_NAME || $key == SUB_DOMAIN_NAME ]] && continue
       if [[ $line == *'${PROJECT_NAME}'* || $line == *'${SUB_DOMAIN_NAME}'* ]]; then
         line=${line//'${PROJECT_NAME}'/$name}
-        echo "${line//'${SUB_DOMAIN_NAME}'/$name}"
+        echo "${line//'${SUB_DOMAIN_NAME}'/$sub}"
       fi
     done < "$root/docker/.env"
   } > "$worktree/docker/.env.local"
+}
+
+mk_domain() {
+  echo "$(mk_value DOMAIN_NAME "$root/docker/.env").$(mk_value DOMAIN_EXTENSION "$root/docker/.env")"
+}
+
+mk_names() {
+  base=$(mk_value PROJECT_NAME "$root/docker/.env")
+  name=$(mk_value PROJECT_NAME "$worktree/docker/.env.local")
+  if [[ -z $name || $name == "$base" ]]; then
+    echo "stack: docker/.env.local n'a pas de PROJECT_NAME propre au worktree, lance 'inr-worktree setup' d'abord" >&2
+    return 1
+  fi
+}
+
+mk_focus() {
+  local base name
+  mk_names || return 1
+  cd "$worktree"
+  mk_env "$name" "$base"
+  docker stop "$base-app" "$base-web" >/dev/null 2>&1 || true
+  touch "$(git rev-parse --absolute-git-dir)/stack-focus"
+  make start FORCE=true
+  echo "stack: $name sert https://$base.$(mk_domain), 'inr-worktree unfocus' pour rendre la main"
+}
+
+mk_unfocus() {
+  local base name marker
+  mk_names || return 1
+  marker="$(git -C "$worktree" rev-parse --absolute-git-dir)/stack-focus"
+  [[ -f $marker ]] || return 0
+  cd "$worktree"
+  mk_env "$name" "$name"
+  make start FORCE=true
+  docker start "$base-app" "$base-web" >/dev/null
+  rm -f "$marker"
+  echo "stack: $base a repris https://$base.$(mk_domain), $name est sur https://$name.$(mk_domain)"
+}
+
+mk_setup() {
+  local base name path
+  base=$(mk_value PROJECT_NAME "$root/docker/.env")
+  name="$base-$(slug "$handle")"
+  mk_env "$name" "$name"
   while IFS= read -r path; do
     [[ -e "$worktree/$path" ]] && continue
     mkdir -p "$worktree/$(dirname "$path")"
@@ -62,8 +104,7 @@ mk_setup() {
   if [[ -d "$root/vendor" && ! -e "$worktree/vendor" ]]; then
     cp -Rc "$root/vendor" "$worktree/vendor" 2>/dev/null || cp -R "$root/vendor" "$worktree/vendor"
   fi
-  domain="$(mk_value DOMAIN_NAME "$root/docker/.env").$(mk_value DOMAIN_EXTENSION "$root/docker/.env")"
-  echo "stack: $name -> https://$name.$domain"
+  echo "stack: $name -> https://$name.$(mk_domain)"
 }
 
 mk_up() {
@@ -100,6 +141,13 @@ mk_down() {
   name=$(mk_value PROJECT_NAME "$worktree/docker/.env.local")
   [[ -n $name ]] || return 0
   docker compose -p "$name" down -v --remove-orphans || echo "stack: arrêt impossible, lance 'inr-worktree prune' plus tard" >&2
+  local marker base
+  marker="$(git -C "$worktree" rev-parse --absolute-git-dir 2>/dev/null)/stack-focus"
+  if [[ -f $marker ]]; then
+    base=$(mk_value PROJECT_NAME "$root/docker/.env")
+    docker start "$base-app" "$base-web" >/dev/null && echo "stack: $base a repris son domaine"
+    rm -f "$marker"
+  fi
 }
 
 excluded() {
@@ -188,6 +236,8 @@ case ${1:-} in
   setup) if mk_project; then mk_setup; else setup; fi ;;
   up) if mk_project; then mk_up; else up; fi ;;
   down) if mk_project; then mk_down; else down; fi ;;
+  focus) mk_project && mk_focus ;;
+  unfocus) mk_project && mk_unfocus ;;
   prune) prune ;;
-  *) echo "usage: inr-worktree setup|up|down|prune" >&2; exit 2 ;;
+  *) echo "usage: inr-worktree setup|up|down|focus|unfocus|prune" >&2; exit 2 ;;
 esac
