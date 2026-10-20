@@ -59,6 +59,9 @@ mk_setup() {
     mkdir -p "$worktree/$(dirname "$path")"
     cp -Rp "$root/$path" "$worktree/$path"
   done < <(git -C "$root" ls-files --others --ignored --exclude-standard -- '.envrc' '.env*.local' 'config/jwt/*')
+  if [[ -d "$root/vendor" && ! -e "$worktree/vendor" ]]; then
+    cp -Rc "$root/vendor" "$worktree/vendor" 2>/dev/null || cp -R "$root/vendor" "$worktree/vendor"
+  fi
   domain="$(mk_value DOMAIN_NAME "$root/docker/.env").$(mk_value DOMAIN_EXTENSION "$root/docker/.env")"
   echo "stack: $name -> https://$name.$domain"
 }
@@ -74,6 +77,9 @@ mk_up() {
   fi
   marker="$(git rev-parse --absolute-git-dir)/stack-database"
   make start
+  if [[ -f composer.json ]]; then
+    docker exec "$name-app" composer install --no-interaction --no-progress || echo "stack: composer install a échoué, relance 'make composer install'" >&2
+  fi
   [[ -f $marker ]] && return 0
   for i in $(seq 60); do
     docker exec "$name-database" pg_isready -q -h 127.0.0.1 2>/dev/null && break
