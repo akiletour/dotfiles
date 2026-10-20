@@ -85,6 +85,8 @@ My local stack runs every project on `https://<project>.inr.local` through OrbSt
 
 `inr-worktree prune` lists stacks whose directory is gone and asks before deleting each one.
 
+Some client projects run on a shared Makefile stack instead, where every container, domain and database name comes from `PROJECT_NAME` in `docker/.env`. Set `WORKTREE_MAKE_STACK_VAR` in `~/.zshrc.local` to the variable their Makefile includes, and the same hooks write a `docker/.env.local` with a per-worktree name, copy the ignored `.env*.local` files and JWT keys, clone the main checkout's Postgres database, and tear it all down on remove. Nothing is added to the client's repo: every file it writes is already in their `.gitignore`, and its state lives in `.git/worktrees/`.
+
 ### tmux
 
 Prefix is `C-a`. Most bindings open a popup and close it when you quit:

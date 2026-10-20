@@ -27,3 +27,4 @@ CLAUDE.md
 .env.inr
 compose.inr.yml
 /strix_runs
+.workmux/

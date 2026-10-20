@@ -15,6 +15,71 @@ slug() {
   printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//' | cut -c1-40 | sed -E 's/-+$//'
 }
 
+mk_project() {
+  [[ "$root" != "$worktree" && -f "$root/docker/.env" && -f "$root/Makefile" ]] && [[ -n ${WORKTREE_MAKE_STACK_VAR:-} ]] && grep -q "$WORKTREE_MAKE_STACK_VAR" "$root/Makefile"
+}
+
+mk_value() {
+  [[ -f $2 ]] || return 0
+  sed -n "s/^$1=//p" "$2" | tail -1 | tr -d "\"'"
+}
+
+mk_setup() {
+  local base name line key path domain
+  base=$(mk_value PROJECT_NAME "$root/docker/.env")
+  name="$base-$(slug "$handle")"
+  umask 077
+  {
+    [[ -f "$root/docker/.env.local" ]] && grep -vE '^(PROJECT_NAME|SUB_DOMAIN_NAME)=' "$root/docker/.env.local"
+    echo "PROJECT_NAME=$name"
+    echo "SUB_DOMAIN_NAME=$name"
+    while IFS= read -r line || [[ -n $line ]]; do
+      key=${line%%=*}
+      [[ $key == PROJECT_NAME || $key == SUB_DOMAIN_NAME ]] && continue
+      if [[ $line == *'${PROJECT_NAME}'* || $line == *'${SUB_DOMAIN_NAME}'* ]]; then
+        line=${line//'${PROJECT_NAME}'/$name}
+        echo "${line//'${SUB_DOMAIN_NAME}'/$name}"
+      fi
+    done < "$root/docker/.env"
+  } > "$worktree/docker/.env.local"
+  while IFS= read -r path; do
+    [[ -e "$worktree/$path" ]] && continue
+    mkdir -p "$worktree/$(dirname "$path")"
+    cp -Rp "$root/$path" "$worktree/$path"
+  done < <(git -C "$root" ls-files --others --ignored --exclude-standard -- '.envrc' '.env*.local' 'config/jwt/*')
+  domain="$(mk_value DOMAIN_NAME "$root/docker/.env").$(mk_value DOMAIN_EXTENSION "$root/docker/.env")"
+  echo "stack: $name -> https://$name.$domain"
+}
+
+mk_up() {
+  local base name marker i
+  cd "$worktree"
+  base=$(mk_value PROJECT_NAME "$root/docker/.env")
+  name=$(mk_value PROJECT_NAME docker/.env.local)
+  marker="$(git rev-parse --absolute-git-dir)/stack-database"
+  make start
+  [[ -f $marker ]] && return 0
+  for i in $(seq 60); do
+    docker exec "$name-database" pg_isready -q -h 127.0.0.1 2>/dev/null && break
+    sleep 1
+  done
+  if docker ps --format '{{.Names}}' | grep -qx "$base-database"; then
+    docker exec "$base-database" sh -c 'pg_dump --no-owner -U "$POSTGRES_USER" "$POSTGRES_DB"' |
+      docker exec -i "$name-database" sh -c 'psql -q -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" "$POSTGRES_DB"' >/dev/null
+    echo "stack: base copiée depuis $base-database"
+  else
+    echo "stack: $base-database ne tourne pas, base vide : lance make migrate" >&2
+  fi
+  touch "$marker"
+}
+
+mk_down() {
+  local name
+  name=$(mk_value PROJECT_NAME "$worktree/docker/.env.local")
+  [[ -n $name ]] || return 0
+  docker compose -p "$name" down -v --remove-orphans || echo "stack: arrêt impossible, lance 'inr-worktree prune' plus tard" >&2
+}
+
 excluded() {
   local key=$1 pattern
   [[ -f "$root/.inr/worktree.exclude" ]] || return 1
@@ -98,9 +163,9 @@ prune() {
 }
 
 case ${1:-} in
-  setup) setup ;;
-  up) up ;;
-  down) down ;;
+  setup) if mk_project; then mk_setup; else setup; fi ;;
+  up) if mk_project; then mk_up; else up; fi ;;
+  down) if mk_project; then mk_down; else down; fi ;;
   prune) prune ;;
   *) echo "usage: inr-worktree setup|up|down|prune" >&2; exit 2 ;;
 esac
