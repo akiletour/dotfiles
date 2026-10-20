@@ -15,6 +15,18 @@ slug() {
   printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//' | cut -c1-40 | sed -E 's/-+$//'
 }
 
+local_setting() {
+  [[ -f "$HOME/.zshrc.local" ]] || return 0
+  sed -n "s/^export $1=//p" "$HOME/.zshrc.local" | tail -1 | tr -d "\"'" | sed -e "s|^\$HOME|$HOME|" -e "s|^~|$HOME|"
+}
+
+if [[ -z ${WORKTREE_MAKE_STACK_VAR:-} ]]; then
+  WORKTREE_MAKE_STACK_VAR=$(local_setting WORKTREE_MAKE_STACK_VAR)
+fi
+if [[ -n ${WORKTREE_MAKE_STACK_VAR:-} && -z ${!WORKTREE_MAKE_STACK_VAR:-} ]]; then
+  export "$WORKTREE_MAKE_STACK_VAR=$(local_setting "$WORKTREE_MAKE_STACK_VAR")"
+fi
+
 mk_project() {
   [[ "$root" != "$worktree" && -f "$root/docker/.env" && -f "$root/Makefile" ]] && [[ -n ${WORKTREE_MAKE_STACK_VAR:-} ]] && grep -q "$WORKTREE_MAKE_STACK_VAR" "$root/Makefile"
 }
@@ -56,6 +68,10 @@ mk_up() {
   cd "$worktree"
   base=$(mk_value PROJECT_NAME "$root/docker/.env")
   name=$(mk_value PROJECT_NAME docker/.env.local)
+  if [[ -z $name || $name == "$base" ]]; then
+    echo "stack: docker/.env.local n'a pas de PROJECT_NAME propre au worktree, lance 'inr-worktree setup' d'abord" >&2
+    return 1
+  fi
   marker="$(git rev-parse --absolute-git-dir)/stack-database"
   make start
   [[ -f $marker ]] && return 0
