@@ -229,7 +229,6 @@ alias kpf='kubectl port-forward'
 alias kt='stern'
 alias lg='lazygit'
 alias lzd='lazydocker'
-alias gcr='gco release'
 alias ghv='gh repo view --web'
 alias ssh='TERM=xterm-256color ssh'
 
@@ -248,6 +247,29 @@ alias gcmsg="git commit -m"
 alias glog="git log --graph --topo-order --pretty='%w(100,0,6)%C(yellow)%h%C(bold)%C(black)%d %C(cyan)%ar %C(green)%an%n%C(bold)%C(white)%s %N' --abbrev-commit"
 alias gd="git diff"
 alias gst="git status"
+alias gcr='git checkout release'
+alias gcm='git checkout $(git_main_branch)'
+
+git_main_branch() {
+  command git rev-parse --git-dir &>/dev/null || return
+  local remote ref
+  for ref in refs/{heads,remotes/{origin,upstream}}/{main,trunk,mainline,default,stable,master}; do
+    if command git show-ref -q --verify $ref; then
+      echo ${ref:t}
+      return 0
+    fi
+  done
+  for remote in origin upstream; do
+    ref=$(command git rev-parse --abbrev-ref $remote/HEAD 2>/dev/null)
+    if [[ $ref == $remote/* ]]; then
+      echo ${ref#"$remote/"}
+      return 0
+    fi
+  done
+  echo master
+  return 1
+}
+
 
 ## Docker
 alias dps="docker ps"
