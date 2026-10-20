@@ -44,6 +44,7 @@ brew "kubernetes-cli"
 brew "kubeseal"
 brew "lazydocker"
 brew "jr-k/d4s/d4s"
+brew "figlet"
 brew "lazygit"
 brew "libffi"
 brew "mailhog", restart_service: :changed

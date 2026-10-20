@@ -1,1 +1,16 @@
 import = ["~/.config/sesh/local.toml"]
+cache = true
+
+[default_session]
+preview_command = "eza --all --git --icons --color=always --group-directories-first {}"
+
+[[session]]
+name = "dotfiles"
+path = "~/dotfiles"
+alias = "df"
+alias_auto_connect = true
+
+[[session]]
+name = "claude"
+path = "~/.claude"
+alias = "cc"

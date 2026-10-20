@@ -11,7 +11,7 @@
 [delta]
   navigate = true
   line-numbers = true
-  syntax-theme = Dracula
+  features = catppuccin-mocha
 [merge]
   conflictstyle = zdiff3
 [credential "https://github.com"]
@@ -21,4 +21,5 @@
 	helper = 
 	helper = !/opt/homebrew/bin/gh auth git-credential
 [include]
+	path = ~/.config/delta/catppuccin-mocha.gitconfig
 	path = ~/.gitconfig.local

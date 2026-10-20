@@ -8,3 +8,17 @@ macos-titlebar-style = hidden
 custom-shader = ~/.config/ghostty/shaders/space.glsl
 window-padding-x = 10
 window-padding-y = 10
+
+keybind = super+physical:one=text:\x011
+keybind = super+physical:two=text:\x012
+keybind = super+physical:three=text:\x013
+keybind = super+physical:four=text:\x014
+keybind = super+physical:five=text:\x015
+keybind = super+physical:six=text:\x016
+keybind = super+physical:seven=text:\x017
+keybind = super+physical:eight=text:\x018
+keybind = super+physical:nine=text:\x019
+keybind = super+t=text:\x01c
+keybind = super+g=text:\x01g
+keybind = super+k=text:\x01K
+keybind = super+j=text:\x01T
