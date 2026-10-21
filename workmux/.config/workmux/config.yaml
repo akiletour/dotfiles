@@ -16,6 +16,9 @@ files:
   copy:
     - .env
     - .env.local
+  symlink:
+    - CLAUDE.md
+    - .claude/settings.local.json
 
 post_create:
   - inr-worktree setup
@@ -24,3 +27,4 @@ post_create:
 pre_remove:
   - inr-worktree down
   - "<cleanup-node-modules>"
+theme: emberforge
