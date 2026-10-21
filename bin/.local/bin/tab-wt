@@ -33,13 +33,10 @@ die() {
   exit 1
 }
 
-composio() {
-  local acct=$1 tool=$2 args=$3 key uid
-  key=$(security find-generic-password -s "tab-wt-composio-$acct" -a api_key -w 2>/dev/null) || die "Clé Composio $acct absente du trousseau"
-  uid=$(security find-generic-password -s "tab-wt-composio-$acct" -a user_id -w)
-  curl -fsS --max-time 20 -X POST "https://backend.composio.dev/api/v3/tools/execute/$tool" \
-    -H "x-api-key: $key" -H 'Content-Type: application/json' \
-    -d "$(jq -n --arg u "$uid" --argjson a "$args" '{user_id: $u, arguments: $a}')"
+twg_json() {
+  local profile=$1
+  shift
+  twg ${profile:+-p "$profile"} "$@" -o json --output-summary none 2>/dev/null | jq -c '(.data // .) | if type == "array" then .[0] else . end'
 }
 
 chrome_url() {
@@ -241,21 +238,21 @@ instances() {
 }
 
 open_jira() {
-  local key=$1 host=${2:-} issue= acct= dir= prefix= h a d p
+  local key=$1 host=${2:-} issue= profile= dir= prefix= h a d p
   require_instances
   while read -r h a d p; do
     [[ -n $host && $h != "$host" ]] && continue
-    issue=$(composio "$a" JIRA_GET_ISSUE "$(jq -n --arg k "$key" '{issue_id_or_key: $k}')") || continue
-    if [[ $(jq -r '.successful' <<<"$issue") == true ]]; then
-      acct=$a dir=$d prefix=$p
+    issue=$(twg_json "$a" jira workitem get "$key") || continue
+    if [[ $(jq -r '.key // empty' <<<"$issue") == "$key" ]]; then
+      profile=$a dir=$d prefix=$p
       break
     fi
   done < <(instances)
-  [[ -n $acct ]] || die "Ticket $key introuvable"
+  [[ -n $profile ]] || die "Ticket $key introuvable"
 
   local summary type project org_dir=$repos_root/$dir repo branch
-  summary=$(jq -r '.data.summary // ""' <<<"$issue")
-  type=$(jq -r '.data.issue_type.name // ""' <<<"$issue")
+  summary=$(jq -r '.summary // ""' <<<"$issue")
+  type=$(jq -r 'if .issuetype.subtask then (.parent.fields.issuetype.name // .issuetype.name) else .issuetype.name end // ""' <<<"$issue")
   project=${key%-*}
 
   shopt -s nocasematch
@@ -296,22 +293,15 @@ open_jira() {
     [[ -n $base ]] && args+=(--base "$base")
   fi
   if ((with_prompt)); then
-    args+=(--prompt "$(jq -r --arg k "$key" '"\($k) : \(.data.summary)\n\n\(.data.description // "" | if type == "string" then . else tostring end)"' <<<"$issue")")
+    args+=(--prompt "$(jq -r --arg k "$key" '"\($k) : \(.summary)\n\n\([.description | .. | .text? // empty] | join(" "))"' <<<"$issue")")
   fi
   open_worktree "$repo" "${args[@]}" "$branch"
 }
 
 open_bitbucket_pr() {
-  local workspace=$1 slug=$2 id=$3 repo pr branch
-  require_instances
+  local workspace=$1 slug=$2 id=$3 repo branch
   repo=$(repo_for_remote "$workspace/$slug")
-  local acct
-  branch=
-  while read -r acct; do
-    pr=$(composio "$acct" BITBUCKET_GET_PULL_REQUEST "$(jq -n --arg w "$workspace" --arg r "$slug" --argjson i "$id" '{workspace: $w, repo_slug: $r, pull_request_id: $i}')") || continue
-    branch=$(jq -r '.data.pull_request.source.branch.name // empty' <<<"$pr")
-    [[ -n $branch ]] && break
-  done < <(instances | awk '!seen[$2]++ {print $2}')
+  branch=$(twg_json "" bb prs get "$id" --repo "$workspace/$slug" | jq -r '.source.branch.name // empty') || branch=
   [[ -n $branch ]] || die "PR #$id introuvable sur $workspace/$slug"
   git -C "$repo" fetch -q origin "$branch" 2>/dev/null || true
   local key name

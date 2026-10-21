@@ -22,7 +22,7 @@ To unlink a package: `stow --delete --target="$HOME" <package>`.
 Each top-level directory is a Stow package that mirrors `$HOME`.
 
 ```
-bin/         inr-worktree, tab-wt and swarm, see below
+bin/         inr-worktree, tab-wt, pr-open and swarm, see below
 zsh/         .zshrc, .zshenv, .aliases
 tmux/        .tmux.conf, status bar and clipboard scripts
 nvim/        LazyVim
@@ -101,20 +101,20 @@ When an OAuth provider only accepts the main domain as a callback, `inr-worktree
 
 `--dry-run` prints the repo, branch, base and target without creating anything. `--prompt` hands the ticket to the agent pane.
 
-Both config files live in `~/.config/tab-wt/` and stay out of the repo, since they name client instances and repos. `instances` has one line per Jira site: host, Composio account, organisation directory under `~/www`, feature prefix.
+Both config files live in `~/.config/tab-wt/` and stay out of the repo, since they name client instances and repos. `instances` has one line per Jira site: host, `twg` login profile, organisation directory under `~/www`, feature prefix.
 
 ```
-acme.atlassian.net  acme  Acme  feature
+acme.atlassian.net  acme-oauth  Acme  feature
 ```
 
-Jira and Bitbucket go through the Composio REST API, with each account's key in the macOS Keychain:
+Jira and Bitbucket go through Atlassian's [`twg`](https://developer.atlassian.com/platform/teamwork-graph/twg-cli/) CLI, logged in with OAuth, one profile per site:
 
 ```sh
-security add-generic-password -U -s tab-wt-composio-acme -a api_key -w '<ak_...>'
-security add-generic-password -U -s tab-wt-composio-acme -a user_id -w '<user id>'
+twg login                                   # first site, becomes the default profile
+twg login --new-profile acme --site acme    # every other site
 ```
 
-In Raycast, add `~/dotfiles/raycast` under Extensions → Script Commands → Add Directories.
+In Raycast, add `~/dotfiles/raycast` under Settings → Script Commands → Add Script Directory.
 
 `projects` has one line per Jira project key, followed by its repos relative to `~/www`:
 
@@ -138,6 +138,7 @@ Prefix is `C-a`. Most bindings open a popup and close it when you quit:
 | `C-a t` | television |
 | `C-a T` | sesh session picker |
 | `C-a W` | workmux dashboard |
+| `C-a P` | the pull request of the current branch in the browser, or the page to create it (`twg` on Bitbucket, `gh` on GitHub) |
 | `C-a *` | toggle synchronized panes |
 
 ## Private files

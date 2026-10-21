@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export PATH="/opt/homebrew/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
+export LANG=${LANG:-en_US.UTF-8}
+
+cd "${1:-$PWD}"
+
+say() {
+  echo "$*"
+  [[ -n ${TMUX:-} ]] && tmux display-message "$*"
+  return 0
+}
+
+die() {
+  say "$*" >&2
+  exit 1
+}
+
+branch=$(git branch --show-current 2>/dev/null) || die "Pas un dépôt git"
+[[ -n $branch ]] || die "HEAD détachée, pas de branche"
+remote=$(git remote get-url origin 2>/dev/null) || die "Pas de remote origin"
+repo=$(sed -E 's#^(git@|ssh://git@|https://)([^/:]+)[:/]##; s#\.git$##' <<<"$remote")
+
+case $remote in
+  *bitbucket.org*)
+    url=$(twg bb prs query --repo "$repo" --source "$branch" --state OPEN -o json --output-summary none 2>/dev/null |
+      jq -r 'first(.[]? | .links.html.href) // empty') || url=
+    if [[ -n $url ]]; then
+      open "$url"
+      say "PR ouverte pour $branch"
+    else
+      open "https://bitbucket.org/$repo/pull-requests/new?source=$(jq -rn --arg b "$branch" '$b | @uri')&t=1"
+      say "Pas de PR ouverte pour $branch, page de création"
+    fi
+    ;;
+  *github.com*)
+    if gh pr view "$branch" -R "$repo" --web >/dev/null 2>&1; then
+      say "PR ouverte pour $branch"
+    else
+      gh pr create -R "$repo" --head "$branch" --web >/dev/null 2>&1 || die "gh pr create a échoué pour $branch"
+      say "Pas de PR pour $branch, page de création"
+    fi
+    ;;
+  *) die "Remote non géré : $remote" ;;
+esac
