@@ -2,6 +2,7 @@
 set -euo pipefail
 
 export DOCKER_CONTEXT=orbstack
+unset COMPOSE_PROJECT_NAME
 
 worktree=${WM_WORKTREE_PATH:-$PWD}
 root=${WM_PROJECT_ROOT:-$(git -C "$worktree" worktree list --porcelain 2>/dev/null | sed -n '1s/^worktree //p')}
@@ -159,6 +160,23 @@ excluded() {
   return 1
 }
 
+clone_uploads() (
+  shopt -s dotglob nullglob
+  local uploads entry
+  for uploads in wp-content/uploads web/app/uploads; do
+    [[ -d "$root/$uploads" ]] || continue
+    mkdir -p "$worktree/$uploads"
+    for entry in "$root/$uploads"/*; do
+      [[ $(basename "$entry") == cache || -e "$worktree/$uploads/$(basename "$entry")" ]] && continue
+      cp -Rpc "$entry" "$worktree/$uploads/" 2>/dev/null || {
+        echo "inr: clonage APFS de $uploads impossible, médias non copiés" >&2
+        exit 0
+      }
+    done
+    echo "inr: $uploads cloné depuis $root"
+  done
+)
+
 setup() {
   [[ -f "$root/.env.inr" && "$root" != "$worktree" ]] || return 0
   local base name main_url line key value
@@ -190,10 +208,11 @@ setup() {
         path=${path#"$root"/}
         [[ -e "$worktree/$path" ]] && continue
         mkdir -p "$worktree/$(dirname "$path")"
-        cp -Rp "$root/$path" "$worktree/$path"
+        cp -Rpc "$root/$path" "$worktree/$path" 2>/dev/null || cp -Rp "$root/$path" "$worktree/$path"
       done
     done < "$root/.inr/worktree.copy"
   fi
+  clone_uploads
   if [[ -f "$worktree/.envrc" ]] && ! git -C "$worktree" ls-files --error-unmatch .envrc >/dev/null 2>&1; then
     grep -q '^export COMPOSE_PROJECT_NAME=' "$worktree/.envrc" || echo "export COMPOSE_PROJECT_NAME=$name" >> "$worktree/.envrc"
   fi
@@ -205,12 +224,11 @@ up() {
   cd "$worktree"
   local snapshot
   snapshot=$(ls -t "$root"/.inr/snapshots/*.sql 2>/dev/null | head -1 || true)
+  inr start -- --wait
   if [[ -n $snapshot && ! -f .inr/restored ]]; then
-    inr start -- --wait database
     inr restore -- "$snapshot"
     mkdir -p .inr && touch .inr/restored
   fi
-  inr start
 }
 
 down() {
